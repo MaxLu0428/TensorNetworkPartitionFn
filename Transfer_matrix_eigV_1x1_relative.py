@@ -94,7 +94,7 @@ if not dir_path.exists():
 T_list = [Tc]
 EigVnums = dcut
 scaleFactors = np.zeros((len(T_list),1+trgstep))
-print('hello error')
+
 for i,T in enumerate(T_list):
     eigenvalues = np.zeros((trgstep,EigVnums))
     DT, IDT = HOTRG_two.Ising_square(T,bias=0)
