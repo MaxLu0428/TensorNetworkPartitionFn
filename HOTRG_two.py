@@ -65,7 +65,7 @@ def DetTLIST (si,sj,To,Ti,Pi):
 def eig_all (theta):
     try:
         Y, Z = linalg.eigh(theta)
-    except linalg.linalg.LinAlgError:
+    except linalg.LinAlgError:
         Y, Z = linalg.eig(theta)
     piv = np.argsort(Y)[::-1]
     Y = np.sqrt(np.abs(Y[piv]))
@@ -118,42 +118,17 @@ def updat_pure( T0,T3,Bond,dcut):
     AA =  np.reshape( np.transpose (AA,(0,2,1,3)),(dimT0[0]*dimT3[0],dimT0[0]*dimT3[0]))
 
     Yo,Zo = eig_all(AA)
-    dc1 = np.min([np.sum(Yo>0),dcut])
+    dc1 = np.min([len(Yo),dcut])
     # dc1 = np.min([np.sum(Yo>10.**(-10)),dcut])
     UU = Zo [0:dc1,:];  UUT =(Zo.T[:,0:dc1]).conj();
 
     AO = merge_two(T0,T3,UU,UUT); N1 = np.max(abs(AO));
     NewT = AO/N1
 
-    if Bond=='x': np.transpose(NewT,(1,0,3,2))
+    if Bond=='x': NewT = np.transpose(NewT,(1,0,3,2))
 
     return NewT,UU,UUT,N1
 #==================================================================#
-def updat_pure2( T0,T3,Bond,dcut):
-
-    if Bond=='x':
-        T0 = np.transpose( T0,(1,0,3,2) )
-        T3 = np.transpose( T3,(1,0,3,2) )
-
-    dimT0 = T0.shape
-    dimT3 = T3.shape
-
-    Aup = np.tensordot( T0, T0.conjugate(), axes= ([2,3],[2,3]))
-    Adown= np.tensordot( T3, T3.conjugate(), axes= ([2,1],[2,1]))
-    AA =  np.tensordot( Aup, Adown, axes= ([1,3],[1,3]))
-    AA =  np.reshape( np.transpose (AA,(0,2,1,3)),(dimT0[0]*dimT3[0],dimT0[0]*dimT3[0]))
-
-    Yo,Zo = eig_all(AA)
-
-    dc1 = np.min([np.sum(Yo>0),dcut])
-    # dc1 = np.min([np.sum(Yo>10.**(-10)),dcut])
-    UU = UUT= np.identity(dc1)
-    AO = merge_two(T0,T3,UU,UUT); N1 = np.max(abs(AO));
-    NewT = AO
-
-    if Bond=='x': np.transpose(NewT,(1,0,3,2))
-
-    return NewT,UU,UUT,N1
 
 
 
@@ -167,7 +142,7 @@ def updat_impurity(T0,T3,Bond,dcut,UU,UUT,N1):
     AO = merge_two(T0,T3,UU,UUT);
     NewT = AO/N1
 
-    if Bond=='x': np.transpose(NewT,(1,0,3,2))
+    if Bond=='x': NewT = np.transpose(NewT,(1,0,3,2))
 
     return NewT
 #==================================================================#
@@ -199,6 +174,39 @@ def creatMemo(trgstep,sites=None):
                 memo[(i,j)] = site_graph_map(i,j,trgstep)
     memo['denominator'] = [8 for _ in range(trgstep+1)]
     return memo
+
+def creatMemoForSy(trgstep,site=None):
+    sites = [(x,y) for x in range(2**trgstep*2) for y in range(2**trgstep*2)]
+    memo  =  creatMemo(trgstep,sites)
+    for site in memo:
+        # if another impurity in the same block
+        if memo[site][0] == 1:
+            memo[site][0] = 7
+        elif memo[site][0] == 2:
+            memo[site][0] = 9
+    # prepare for another impurity at another block
+    memo['aux1'] = [1 for _ in range(trgstep+1)]
+    memo['aux2'] = [2] + [1 for _ in range(trgstep)]
+    for site in memo:
+        for i in memo[site][:-1]:
+            if memo[site][i] == 4 and memo[site][i+1] == 7 and i != len(memo[site]-2):
+                memo[site][i+2] = 10
+            elif memo[site][i] == 4 and memo[site][i+1] == 1:
+                memo[site][1] = 11
+            elif memo[site][0] == 4 and memo[site][1] == 2:
+                pass
+            elif memo[site] == 3 and memo[site][1] == 7:
+                memo[site][2] = 12
+            elif memo[site] == 3 and memo[site][1] == 2 :
+                memo[site][1] = 13
+
+    memo[(1,0)] = [14] + [1 for _ in range(trgstep)]
+    memo[(1,1)][1] = None
+
+
+
+
+
 
 def site_graph_map(i,j,trgsteps):
     result = []
@@ -303,13 +311,83 @@ def M4_calculation (S0,S1,S2,S3,S4,dcut):
         S0 = nS0;  S1 = nS1;  S2 = nS2;  S3 = nS3;   S4 = nS4;
 
     return S0,S1,S2,S3,S4
+
+
+def correlation_lengh(S0,S1_q1,S2_q1,S1_q2,S2_q2,dcut,q1=(2*np.pi/(2**6),0),RG_step=0):
+    q1 = np.array(q1)
+    q2 = 2 * q1
+    for Bond in [ 'y', 'x']:
+        if Bond == 'y':
+            T = np.array([0,2**RG_step])
+        elif Bond == 'x':
+            T = np.array([2**RG_step,0])
+
+        nS0,UU,UUT,N1 = updat_pure( S0,S0,Bond,dcut)
+        j = np.array(1j)
+        phase1 = np.dot(T,q1)
+        S1_q1_conj = np.conj(S1_q1)
+        phase2 = np.dot(T,q2)
+        S1_q2_conj = np.conj(S1_q2)
+        nS1_q1 = 1./2.*(updat_impurity( S1_q1, S0,Bond,dcut,UU,UUT,N1)+
+                        np.exp(j*phase1)*updat_impurity( S0, S1_q1,Bond,dcut,UU,UUT,N1))
+        q1_cross = np.exp(j*phase1)*updat_impurity(S1_q1, S1_q1_conj,Bond,dcut,UU,UUT,N1)
+        nS2_q1 = 1./4.*( updat_impurity( S2_q1, S0,Bond,dcut,UU,UUT,N1) +
+                      updat_impurity( S0, S2_q1,Bond,dcut,UU,UUT,N1) +
+                        q1_cross+ q1_cross.conj()
+                       )
+        nS1_q2 = 1./2.*(updat_impurity( S1_q2, S0,Bond,dcut,UU,UUT,N1)+
+                        np.exp(j*phase2)*updat_impurity( S0, S1_q2,Bond,dcut,UU,UUT,N1))
+
+        q2_cross = np.exp(j*phase2)*updat_impurity( S1_q2_conj, S1_q2,Bond,dcut,UU,UUT,N1)
+
+        nS2_q2 = 1./4.*( updat_impurity( S2_q2, S0,Bond,dcut,UU,UUT,N1) +
+                         updat_impurity( S0, S2_q2,Bond,dcut,UU,UUT,N1) +
+                        q2_cross+ q2_cross.conj()
+                       )
+
+        S0 = nS0;  S1_q1 = nS1_q1;  S2_q1 = nS2_q1;  S1_q2 = nS1_q2;   S2_q2 = nS2_q2;
+    return S0,S1_q1,S2_q1,S1_q2,S2_q2
 #==================================================================#
+def correlation_lengh2(S0,S1_q1,S2_q1,S1_q2,S2_q2,dcut,q1=(2*np.pi/(2**6),0),RG_step=0):
+    q1 = np.array(q1)
+    q2 = 2 * q1
+    for Bond in [ 'y', 'x']:
+        if Bond == 'y':
+            T = np.array([0,2**RG_step])
+        elif Bond == 'x':
+            T = np.array([2**RG_step,0])
 
+        nS0,UU,UUT,N1 = updat_pure( S0,S0,Bond,dcut)
+        j = np.array(1j)
+        phase1 = np.dot(T,q1)
+        S1_q1_conj = np.conj(S1_q1)
+        phase2 = np.dot(T,q2)
+        S1_q2_conj = np.conj(S1_q2)
+        nS1_q1 = 1./2.*(updat_impurity( S1_q1, S0,Bond,dcut,UU,UUT,N1)+
+                        np.exp(j*phase1)*updat_impurity( S0, S1_q1,Bond,dcut,UU,UUT,N1))
+        q1_cross = np.exp(j*phase1)*updat_impurity(S1_q1, S1_q1_conj,Bond,dcut,UU,UUT,N1)
+        q1_cross_conj = np.exp(-j*phase1) * updat_impurity(S1_q1, S1_q1_conj,Bond,dcut,UU,UUT,N1)
+        nS2_q1 = 1./4.*( updat_impurity( S2_q1, S0,Bond,dcut,UU,UUT,N1) +
+                      updat_impurity( S0, S2_q1,Bond,dcut,UU,UUT,N1) +
+                        q1_cross+ q1_cross_conj
+                       )
+        nS1_q2 = 1./2.*(updat_impurity( S1_q2, S0,Bond,dcut,UU,UUT,N1)+
+                        np.exp(j*phase2)*updat_impurity( S0, S1_q2,Bond,dcut,UU,UUT,N1))
+
+        q2_cross = np.exp(j*phase2)*updat_impurity( S1_q2_conj, S1_q2,Bond,dcut,UU,UUT,N1)
+        q2_cross_conj = np.exp(-j*phase2) * updat_impurity(S1_q2, S1_q2_conj,Bond,dcut,UU,UUT,N1)
+        nS2_q2 = 1./4.*( updat_impurity( S2_q2, S0,Bond,dcut,UU,UUT,N1) +
+                         updat_impurity( S0, S2_q2,Bond,dcut,UU,UUT,N1) +
+                        q2_cross+ q2_cross_conj
+                       )
+
+        S0 = nS0;  S1_q1 = nS1_q1;  S2_q1 = nS2_q1;  S1_q2 = nS1_q2;   S2_q2 = nS2_q2;
+    return S0,S1_q1,S2_q1,S1_q2,S2_q2
 
 
 
 #==================================================================#
-def Ising_square(T):
+def Ising_square(T,bias=10**-4):
 
 
         Tax = np.ones((2,2))
@@ -321,7 +399,7 @@ def Ising_square(T):
         for ii in range(2):
             DT [ii,ii,ii,ii] = 1.0
             iDT [ii,ii,ii,ii] = -1.0
-
+        DT[0,0,0,0] += bias
         iDT [0,0,0,0] = 1
 
         Tax [0,0] = np.exp((1./T))
