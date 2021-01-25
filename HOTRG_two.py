@@ -76,10 +76,13 @@ def eig_all (theta):
 
 #==================================================================#
 def merge_two(T1,T2,UU,UUT):
-
-    D1 = UU.shape[0]; D2=int(np.sqrt(UU.shape[1]))
-    UU = np.reshape(UU,(D1,D2,D2))
-    UUT = np.reshape(UUT,(D2,D2,D1))
+    dimT1 = T1.shape
+    DT1 = dimT1[0]
+    dimT2 = T2.shape
+    DT2 = dimT2[0]
+    D1 = UU.shape[0];
+    UU = np.reshape(UU,(D1,DT1,DT2))
+    UUT = np.reshape(UUT,(DT1,DT2,D1))
 
     Aup =  np.tensordot(T1,UU, axes=(2,1))
     Adown =  np.tensordot(T2,UUT, axes=(0,1))
