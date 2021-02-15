@@ -83,7 +83,6 @@ def merge_two(T1,T2,UU,UUT):
     D1 = UU.shape[0];
     UU = np.reshape(UU,(D1,DT1,DT2))
     UUT = np.reshape(UUT,(DT1,DT2,D1))
-
     Aup =  np.tensordot(T1,UU, axes=(2,1))
     Adown =  np.tensordot(T2,UUT, axes=(0,1))
     AO = np.tensordot(Aup,Adown,axes=([0,1,4],[3,2,1]) )
