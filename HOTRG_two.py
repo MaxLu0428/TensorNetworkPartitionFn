@@ -10,9 +10,13 @@ Created on Thu Mar 26 13:38:42 2020
 import numpy as np
 from math import pi
 from scipy import linalg
+import mpmath as mp
+import copy
+mp.dps = 20
+mp.pretty = True
 
-
-
+mpZero = mp.matrix([0])
+mpOne  = mp.matrix([1])
 #==================================================================#
 def DetT (si,sj,To,Ti,Pi):
 
@@ -72,6 +76,16 @@ def eig_all (theta):
     Z = np.conj(Z[:,piv].T)
     return Y,Z
 #==================================================================#
+def eig_all_mpVer (theta):
+
+    Y, Z = mp.eig(theta)
+    Y = mp2np(Y)
+    Z = mp2np(Z)
+    piv = np.argsort(Y)[::-1]
+    Y = np.sqrt(np.abs(Y[piv]))
+    Z = np.conj(Z[:,piv].T)
+    return Y,Z
+
 
 
 #==================================================================#
@@ -131,6 +145,33 @@ def updat_pure( T0,T3,Bond,dcut):
 
     return NewT,UU,UUT,N1
 #==================================================================#
+def updat_pure_mpVer( T0,T3,Bond,dcut):
+
+    if Bond=='x':
+        T0 = np.transpose( T0,(1,0,3,2) )
+        T3 = np.transpose( T3,(1,0,3,2) )
+
+    dimT0 = T0.shape
+    dimT3 = T3.shape
+
+    Aup = np.tensordot( T0, T0.conjugate(), axes= ([2,3],[2,3]))
+    Adown= np.tensordot( T3, T3.conjugate(), axes= ([2,1],[2,1]))
+    AA =  np.tensordot( Aup, Adown, axes= ([1,3],[1,3]))
+    AA =  np.reshape( np.transpose (AA,(0,2,1,3)),(dimT0[0]*dimT3[0],dimT0[0]*dimT3[0]))
+
+    Yo,Zo = eig_all_mpVer(AA)
+
+    dc1 = np.min([len(Yo),dcut])
+    # dc1 = np.min([np.sum(Yo>10.**(-10)),dcut])
+    UU = Zo [0:dc1,:];  UUT =(Zo.T[:,0:dc1]).conj();
+
+    AO = merge_two(T0,T3,UU,UUT); N1 = np.max(abs(AO));
+    NewT = AO/N1
+
+    if Bond=='x': NewT = np.transpose(NewT,(1,0,3,2))
+
+    return NewT,UU,UUT,N1
+
 
 
 
@@ -388,26 +429,84 @@ def correlation_lengh2(S0,S1_q1,S2_q1,S1_q2,S2_q2,dcut,q1=(2*np.pi/(2**6),0),RG_
 
 
 
+
+
+
+def mp2np(mpMatrix,reverse=False):
+    row,col = mpMatrix.rows, mpMatrix.cols
+    if reverse:
+        row,col = col,row
+    nparray = np.array(mpMatrix)
+    nparray = np.reshape(nparray,(row,col))
+    return nparray
+
+def diag(ndarray):
+    '''given a one dimension vector, return matrix whose diagonal elements
+    are from this vector'''
+    dim = ndarray.size
+    result = np.zeros((dim,dim))
+    for i,ele in enumerate(ndarray):
+        result[i,i] = ele
+    return result
+
+def Ising_square_mpVer(T,bias=0):
+    Tax = mp.ones(2,2)
+    taix = []
+    mpZeros = [mpZero for _ in range(16)]
+    zeros = np.array(mpZeros)
+    DT = np.reshape(zeros,(2,2,2,2))
+    iDT = copy.copy(DT)
+    for ii in range(2):
+        DT [ii,ii,ii,ii] = mpOne
+        iDT[ii,ii,ii,ii] = -1*mpOne
+    Tax [0,0] = mp.exp((1./T))
+    Tax [0,1] = mp.exp((-1./T))
+    Tax [1,0] = mp.exp((-1./T))
+    Tax [1,1] = mp.exp((1./T))
+    DT[0,0,0,0] += bias
+    iDT [0,0,0,0] = mpOne
+    Ya, Za = mp.eigh(Tax)
+    Ya = diag(mp2np(Ya)**0.5)
+    Za = mp2np(Za)
+    taix.append(np.tensordot(Za, Ya,axes=(1,0)) )
+    taix.append(np.tensordot(Ya, (Za.T) ,axes=(1,0)))
+    DT =  np.tensordot( DT,taix[0],axes=(0,0))
+    DT =  np.tensordot( DT,taix[0],axes=(0,0))
+    DT =  np.tensordot( DT,taix[1],axes=(0,1))
+    DT =  np.tensordot( DT,taix[1],axes=(0,1))
+
+#        print '================='
+
+    iDT =  np.tensordot(iDT,taix[0],axes=(0,0))
+    iDT =  np.tensordot(iDT,taix[0],axes=(0,0))
+    iDT =  np.tensordot(iDT,taix[1],axes=(0,1))
+    iDT =  np.tensordot(iDT,taix[1],axes=(0,1))
+
+    return DT, iDT
 #==================================================================#
-def Ising_square(T,bias=10**-4):
-
-
-        Tax = np.ones((2,2))
+def Ising_square(T,bias=0,h=None):
+        if not h:
+            Tax = np.ones((2,2))
+        else:
+            Tax = np.ones((2,2),dtype=np.complex128)
         taix = []
 
-        DT = np.zeros((2,2,2,2))
-        iDT = np.zeros((2,2,2,2))
+        DT = np.zeros((2,2,2,2),dtype=np.complex128)
+        iDT = np.zeros((2,2,2,2),dtype=np.complex128)
 
         for ii in range(2):
             DT [ii,ii,ii,ii] = 1.0
             iDT [ii,ii,ii,ii] = -1.0
         DT[0,0,0,0] += bias
         iDT [0,0,0,0] = 1
-
-        Tax [0,0] = np.exp((1./T))
         Tax [0,1] = np.exp((-1./T))
         Tax [1,0] = np.exp((-1./T))
-        Tax [1,1] = np.exp((1./T))
+        if not h:
+            Tax [0,0] = np.exp((1./T))
+            Tax [1,1] = np.exp((1./T))
+        else:
+            Tax[0,0] = np.exp((1./T+1j*h/2))
+            Tax[1,1] = np.exp((1./T-1j*h/2))
 
 
         Ya, Za = np.linalg.eigh(Tax)
@@ -429,6 +528,9 @@ def Ising_square(T,bias=10**-4):
 
         return DT, iDT
 #==================================================================#
+
+
+
 
 #==================================================================#
 def Ising_exact(N,beta,dpp):
