@@ -487,12 +487,15 @@ def Ising_square_mpVer(T,bias=0):
 def Ising_square(T,bias=0,h=None):
         if not h:
             Tax = np.ones((2,2))
+            DT = np.zeros((2,2,2,2))
+            iDT = np.zeros((2,2,2,2))
         else:
             Tax = np.ones((2,2),dtype=np.complex128)
+            DT = np.zeros((2,2,2,2),dtype=np.complex128)
+            iDT = np.zeros((2,2,2,2),dtype=np.complex128)
         taix = []
 
-        DT = np.zeros((2,2,2,2),dtype=np.complex128)
-        iDT = np.zeros((2,2,2,2),dtype=np.complex128)
+
 
         for ii in range(2):
             DT [ii,ii,ii,ii] = 1.0
@@ -505,9 +508,8 @@ def Ising_square(T,bias=0,h=None):
             Tax [0,0] = np.exp((1./T))
             Tax [1,1] = np.exp((1./T))
         else:
-            Tax[0,0] = np.exp((1./T+1j*h/2))
-            Tax[1,1] = np.exp((1./T-1j*h/2))
-
+            Tax[0,0] = np.exp((1./T-1j*h/2))
+            Tax[1,1] = np.exp((1./T+1j*h/2))
 
         Ya, Za = np.linalg.eigh(Tax)
         taix.append(np.tensordot(Za, np.diag(Ya**0.5),axes=(1,0)) )
